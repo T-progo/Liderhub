@@ -1,0 +1,336 @@
+{
+  "name": "Avisos de prazo - Controle de Distribuição",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Dias úteis às 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: {\n  supabaseUrl: 'https://SEU-PROJETO.supabase.co', // endereço do projeto Supabase\n  liderhubBase: 'https://api.liderhub.com.br',\n  numeroConexao: '24992595948', // número do escritório conectado no Liderhub (final)\n  prefixo: '[Controle de Prazos]',\n  linkSistema: 'https://SEU-SISTEMA.vercel.app/contratos', // link para abrir o sistema\n} }];"
+      },
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/alertas_pendentes?select=*",
+        "options": {},
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "name": "Supabase alertas do dia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/perfis?select=nome,whatsapp&papel=eq.admin&ativo=eq.true",
+        "options": {},
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "name": "Supabase administradores",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.liderhubBase }}/v1/connections",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "Liderhub conexões",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hTnvkqYGcd8A76vt",
+          "name": "Liderhub API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds one WhatsApp message per due alert (view alertas_pendentes).\n// Recipient: the contract's responsável; if they have no WhatsApp (or no responsável), every active admin.\nconst cfg = $('Config').first().json;\n\nconst digits = (v) => String(v || '').replace(/\\D/g, '');\nconst telefone = (v) => {\n  const d = digits(v);\n  if (d.length < 10) return null;\n  return d.startsWith('55') && d.length >= 12 ? d : `55${d}`;\n};\nconst data = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '-');\n\n// Liderhub connection used to send (the office number).\nconst conexoes = $('Liderhub conexões').all().flatMap((i) => {\n  const j = i.json;\n  if (Array.isArray(j)) return j;\n  return j.connections || j.data || [j];\n});\nconst conexao =\n  conexoes.find((c) => digits(c.number).endsWith(digits(cfg.numeroConexao)) && c.connectionStatus !== 'disconnected') ||\n  conexoes.find((c) => c.connectionStatus === 'connected') ||\n  conexoes[0];\nif (!conexao?.id) throw new Error('Nenhuma conexão WhatsApp encontrada no Liderhub.');\n\nconst admins = $('Supabase administradores')\n  .all()\n  .flatMap((i) => (Array.isArray(i.json) ? i.json : [i.json]))\n  .filter((a) => a && a.whatsapp);\n\nconst TEXTO = {\n  d_menos_3: (a) => `vence em 3 dias (${data(a.data_prazo)}).`,\n  d_menos_1: (a) => `vence amanhã (${data(a.data_prazo)}).`,\n  d_zero: (a) => `vence HOJE (${data(a.data_prazo)}).`,\n  atraso_1: (a) => `está ATRASADO: o prazo venceu em ${data(a.data_prazo)}.`,\n  atraso_2: (a) => `continua ATRASADO: o prazo venceu em ${data(a.data_prazo)}.`,\n};\n\nconst alertas = $('Supabase alertas do dia').all().flatMap((i) => (Array.isArray(i.json) ? i.json : [i.json])).filter((a) => a && a.contrato_id);\nconst out = [];\nfor (const a of alertas) {\n  const contrato = a.numero ? `O contrato ${a.numero}` : 'O contrato (sem nº)';\n  const corpo = `${cfg.prefixo} ${contrato} de ${a.cliente_nome} ${TEXTO[a.tipo](a)}\\n${cfg.linkSistema}`;\n  const dono = telefone(a.responsavel_whatsapp);\n  const destinos = dono\n    ? [{ numero: dono, nome: a.responsavel_nome, texto: corpo }]\n    : admins.map((ad) => ({\n        numero: telefone(ad.whatsapp),\n        nome: ad.nome,\n        texto: `${corpo}\\n(Sem responsável com WhatsApp cadastrado. Defina o responsável no sistema.)`,\n      }));\n  for (const d of destinos.filter((x) => x.numero)) {\n    out.push({ json: { contrato_id: a.contrato_id, tipo: a.tipo, connection: conexao.id, ...d } });\n  }\n}\nreturn out;\n"
+      },
+      "name": "Montar avisos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.liderhubBase }}/v1/contacts",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ connection: $json.connection, number: $json.numero, name: $json.nome }) }}"
+      },
+      "name": "Liderhub contato do responsável",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hTnvkqYGcd8A76vt",
+          "name": "Liderhub API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.liderhubBase }}/v1/send/message",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contact: $json.id, content: $('Montar avisos').item.json.texto, messageType: 'conversation' }) }}"
+      },
+      "name": "Liderhub enviar aviso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hTnvkqYGcd8A76vt",
+          "name": "Liderhub API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all()\n  .map((r, i) => ({ r, a: $('Montar avisos').all()[r.pairedItem?.item ?? i].json }))\n  .filter(({ r }) => r.json && r.json.id && !r.json.error)\n  .map(({ a }) => ({ json: { contrato_id: a.contrato_id, tipo: a.tipo, destino: a.numero } }));"
+      },
+      "name": "Só enviados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/alertas_enviados",
+        "options": {},
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "name": "Supabase registrar envio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "width": 560,
+        "height": 260,
+        "content": "## Avisos de prazo (Controle de Distribuição)\nDias úteis às 8h: lê a view `alertas_pendentes` no Supabase e envia pelo Liderhub um WhatsApp ao responsável de cada contrato: 3 dias antes, véspera, dia do prazo, 1 dia de atraso e N dias de atraso (configurável no sistema).\n\nCada aviso é registrado em `alertas_enviados` e nunca é enviado duas vezes. Sem responsável/WhatsApp → vai para os administradores.\n\n**Credenciais:** `Liderhub API` e `Supabase` (host + service_role key)."
+      },
+      "name": "Leia-me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -40
+      ]
+    }
+  ],
+  "connections": {
+    "Dias úteis às 8h": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Supabase alertas do dia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase alertas do dia": {
+      "main": [
+        [
+          {
+            "node": "Supabase administradores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase administradores": {
+      "main": [
+        [
+          {
+            "node": "Liderhub conexões",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liderhub conexões": {
+      "main": [
+        [
+          {
+            "node": "Montar avisos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar avisos": {
+      "main": [
+        [
+          {
+            "node": "Liderhub contato do responsável",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liderhub contato do responsável": {
+      "main": [
+        [
+          {
+            "node": "Liderhub enviar aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Liderhub enviar aviso": {
+      "main": [
+        [
+          {
+            "node": "Só enviados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Só enviados": {
+      "main": [
+        [
+          {
+            "node": "Supabase registrar envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}
