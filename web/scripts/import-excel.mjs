@@ -2,6 +2,8 @@
 //
 //   node --env-file=.env.local scripts/import-excel.mjs planilha.xlsx --aba "2026 - b"            (dry run: report only)
 //   node --env-file=.env.local scripts/import-excel.mjs planilha.xlsx --aba "2026 - b" --gravar   (write to Supabase)
+//   node --env-file=.env.local scripts/import-excel.mjs planilha.xlsx --aba "2026 - b" --responsaveis
+//     (after creating the users: links imported contracts that have no responsavel yet, by contract number)
 //
 // The dry run also works without .env.local (no database checks).
 // Columns are recognized by name (accents/case ignored); the header row is the first row with "contrato" and "cliente".
@@ -16,6 +18,7 @@ XLSX.set_fs(fs); // the ESM build of SheetJS needs the file system injected
 const args = process.argv.slice(2);
 const arquivo = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--aba");
 const GRAVAR = args.includes("--gravar");
+const SO_RESP = args.includes("--responsaveis");
 const abaNome = args.includes("--aba") ? args[args.indexOf("--aba") + 1] : null;
 if (!arquivo) {
   console.error('Uso: node --env-file=.env.local scripts/import-excel.mjs <arquivo.xlsx> [--aba "2026 - b"] [--gravar]');
@@ -161,7 +164,7 @@ if (faltando.length) console.warn("ATENÇÃO - colunas não encontradas:", falta
 // ------------------------------------------------------------------ database (optional in the dry run)
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (GRAVAR && (!url || !key)) {
+if ((GRAVAR || SO_RESP) && (!url || !key)) {
   console.error("Defina NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY em .env.local");
   process.exit(1);
 }
@@ -211,7 +214,7 @@ matriz.slice(iCab + 1).forEach((r, i) => {
   if (!numero && !cliente) return; // empty row
   if (!cliente) return avisos.push(`Linha ${linha}: "${numero}" sem nome do cliente - linha ignorada.`);
   if (numero && vistos.has(numero)) return erros.push(`Linha ${linha}: nº de contrato ${numero} repetido na planilha.`);
-  if (numero && numerosExistentes.has(numero)) return avisos.push(`Linha ${linha}: contrato ${numero} já existe no sistema (ignorado).`);
+  if (numero && numerosExistentes.has(numero) && !SO_RESP) return avisos.push(`Linha ${linha}: contrato ${numero} já existe no sistema (ignorado).`);
   if (numero) vistos.add(numero);
 
   const datas = {
@@ -315,6 +318,22 @@ if (tempos.length) {
   const media = tempos.reduce((a, b) => a + b, 0) / tempos.length;
   const noPrazo = tempos.filter((t) => t <= 10).length;
   console.log(`\nIndicadores esperados no painel: tempo médio ${media.toFixed(1)} dias · ${((100 * noPrazo) / tempos.length).toFixed(1)}% no prazo (${noPrazo}/${tempos.length} distribuídos com data de entrega)`);
+}
+
+if (SO_RESP) {
+  let n = 0;
+  for (const v of validos.filter((v) => v.contrato.numero && v.contrato.responsavel_id)) {
+    const { data: lig } = await db
+      .from("contratos")
+      .update({ responsavel_id: v.contrato.responsavel_id })
+      .eq("numero", v.contrato.numero)
+      .is("responsavel_id", null)
+      .select("id");
+    n += lig?.length ?? 0;
+  }
+  console.log(`
+Responsáveis vinculados: ${n} contratos.`);
+  process.exit(0);
 }
 
 if (!GRAVAR) {
