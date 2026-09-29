@@ -44,6 +44,7 @@ export type ContratoPrazo = {
   cliente_id: string;
   natureza: Natureza;
   tipo_id: number | null;
+  descricao: string | null;
   responsavel_id: string | null;
   status: StatusContrato;
   motivo_cancelamento: MotivoCancelamento | null;

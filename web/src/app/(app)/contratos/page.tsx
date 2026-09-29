@@ -32,7 +32,7 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
     // Keep only characters that are safe inside a PostgREST or() filter.
     const q = f.q.trim().replace(/[^\p{L}\p{N} ./-]/gu, "");
     const digits = q.replace(/\D/g, "");
-    const partes = [`numero.ilike.*${q}*`, `cliente_nome.ilike.*${q}*`];
+    const partes = [`numero.ilike.*${q}*`, `cliente_nome.ilike.*${q}*`, `descricao.ilike.*${q}*`];
     if (digits.length >= 3) partes.push(`cliente_cpf.ilike.*${digits}*`);
     query = query.or(partes.join(","));
   }
@@ -72,7 +72,7 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
 
       <Card>
         <form className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-          <Input name="q" defaultValue={f.q} placeholder="Nº, cliente ou CPF" className="md:col-span-2" />
+          <Input name="q" defaultValue={f.q} placeholder="Nº, cliente, CPF ou descrição" className="md:col-span-2" />
           <Select name="status" defaultValue={status}>
             <option value="em_andamento">Em andamento</option>
             <option value="distribuido">Distribuídos</option>
@@ -149,6 +149,7 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
                 <td className="px-3 py-2">
                   <div>{NATUREZA[c.natureza]}</div>
                   <div className="text-xs text-slate-500">{c.tipo_nome ?? "-"}</div>
+                  {c.descricao && <div className="max-w-xs truncate text-xs text-slate-400" title={c.descricao}>{c.descricao}</div>}
                 </td>
                 <td className="px-3 py-2">{c.responsavel_nome ?? <span className="text-slate-400">-</span>}</td>
                 <td className="px-3 py-2">{data(c.data_entrega_docs)}</td>

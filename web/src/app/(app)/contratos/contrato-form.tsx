@@ -63,6 +63,9 @@ export function ContratoForm({ contrato, cliente, tipos, perfis }: Props) {
             ))}
           </Select>
         </Field>
+        <Field label="Descrição / objeto" hint="Ex.: Ação em face do Banco BMG">
+          <Input name="descricao" defaultValue={contrato?.descricao ?? ""} />
+        </Field>
         <Field label="Responsável">
           <Select name="responsavel_id" defaultValue={contrato?.responsavel_id ?? ""}>
             <option value="">(sem responsável)</option>

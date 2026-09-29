@@ -48,6 +48,7 @@ export async function salvarContrato(_prev: FormState, fd: FormData): Promise<Fo
     numero: vazioNull(fd.get("numero")),
     natureza: vazioNull(fd.get("natureza")) ?? "previdenciaria",
     tipo_id: vazioNull(fd.get("tipo_id")) ? Number(fd.get("tipo_id")) : null,
+    descricao: vazioNull(fd.get("descricao")),
     responsavel_id: vazioNull(fd.get("responsavel_id")),
     data_assinatura: vazioNull(fd.get("data_assinatura")),
     data_entrega_docs: vazioNull(fd.get("data_entrega_docs")),

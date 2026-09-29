@@ -86,6 +86,7 @@ create table contratos (
   cliente_id         uuid not null references clientes(id) on delete restrict,
   natureza           natureza_processo not null default 'previdenciaria',
   tipo_id            int references tipos_processo(id),
+  descricao          text,              -- objeto / descrição livre (ex.: "Ação em face do Banco BMG")
   responsavel_id     uuid references perfis(id),
   status             status_contrato not null default 'em_andamento',
   motivo_cancelamento motivo_cancelamento,
@@ -158,7 +159,7 @@ cross join configuracoes cfg;
 create view kpis_gerais with (security_invoker = on) as
 select
   round(avg(tempo_distribuicao)::numeric, 1)                                   as tempo_medio_dias,
-  round(100.0 * count(*) filter (where no_prazo) / nullif(count(*) filter (where status = 'distribuido'), 0), 1) as pct_no_prazo,
+  round(100.0 * count(*) filter (where no_prazo) / nullif(count(no_prazo), 0), 1) as pct_no_prazo,
   (select meta_no_prazo from configuracoes)                                     as meta_pct,
   count(*) filter (where status = 'distribuido')                                as distribuidos,
   count(*) filter (where status = 'em_andamento')                               as em_andamento,
@@ -170,7 +171,7 @@ where status <> 'cancelado';
 create view kpis_por_responsavel with (security_invoker = on) as
 select responsavel_id, coalesce(responsavel_nome, '(sem responsável)') as responsavel_nome,
   round(avg(tempo_distribuicao)::numeric, 1) as tempo_medio_dias,
-  round(100.0 * count(*) filter (where no_prazo) / nullif(count(*) filter (where status = 'distribuido'), 0), 1) as pct_no_prazo,
+  round(100.0 * count(*) filter (where no_prazo) / nullif(count(no_prazo), 0), 1) as pct_no_prazo,
   count(*) filter (where status = 'distribuido') as distribuidos,
   count(*) filter (where status = 'em_andamento' and dias_atraso > 0) as atrasados
 from contratos_prazos where status <> 'cancelado'
@@ -179,7 +180,7 @@ group by responsavel_id, responsavel_nome;
 create view kpis_por_tipo with (security_invoker = on) as
 select natureza, coalesce(tipo_nome, '(sem tipo)') as tipo_nome,
   round(avg(tempo_distribuicao)::numeric, 1) as tempo_medio_dias,
-  round(100.0 * count(*) filter (where no_prazo) / nullif(count(*) filter (where status = 'distribuido'), 0), 1) as pct_no_prazo,
+  round(100.0 * count(*) filter (where no_prazo) / nullif(count(no_prazo), 0), 1) as pct_no_prazo,
   count(*) filter (where status = 'distribuido') as distribuidos,
   count(*) filter (where status = 'em_andamento') as em_andamento
 from contratos_prazos where status <> 'cancelado'

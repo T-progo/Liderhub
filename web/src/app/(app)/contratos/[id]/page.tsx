@@ -47,6 +47,7 @@ export default async function ContratoPage(props: PageProps<"/contratos/[id]">) 
           {c.cliente_nome} · {NATUREZA[c.natureza]}
           {c.tipo_nome && ` · ${c.tipo_nome}`} · {ORIGEM[c.origem]}
         </p>
+        {c.descricao && <p className="text-sm text-slate-500">{c.descricao}</p>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

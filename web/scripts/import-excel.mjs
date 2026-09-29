@@ -1,9 +1,11 @@
-// Imports the client's current control spreadsheet (~300 rows) into clientes + contratos.
+// Imports the office's control spreadsheet (tab "2026 - b") into clientes + contratos + pendencias.
 //
-//   node --env-file=.env.local scripts/import-excel.mjs ../data/planilha.xlsx            (dry run: report only)
-//   node --env-file=.env.local scripts/import-excel.mjs ../data/planilha.xlsx --gravar   (write to Supabase)
+//   node --env-file=.env.local scripts/import-excel.mjs planilha.xlsx --aba "2026 - b"            (dry run: report only)
+//   node --env-file=.env.local scripts/import-excel.mjs planilha.xlsx --aba "2026 - b" --gravar   (write to Supabase)
 //
-// Columns are recognized by name (accents/case ignored). Adjust COLUNAS below after seeing the real file.
+// The dry run also works without .env.local (no database checks).
+// Columns are recognized by name (accents/case ignored); the header row is the first row with "contrato" and "cliente".
+// Create the users (responsáveis) in the system BEFORE importing, so contracts get linked to them.
 // Uses the service_role key (bypasses RLS) - run only on your machine.
 import * as fs from "node:fs";
 import * as XLSX from "xlsx";
@@ -11,10 +13,12 @@ import { createClient } from "@supabase/supabase-js";
 
 XLSX.set_fs(fs); // the ESM build of SheetJS needs the file system injected
 
-const [arquivo, ...flags] = process.argv.slice(2);
-const GRAVAR = flags.includes("--gravar");
+const args = process.argv.slice(2);
+const arquivo = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--aba");
+const GRAVAR = args.includes("--gravar");
+const abaNome = args.includes("--aba") ? args[args.indexOf("--aba") + 1] : null;
 if (!arquivo) {
-  console.error("Uso: node --env-file=.env.local scripts/import-excel.mjs <arquivo.xlsx> [--gravar]");
+  console.error('Uso: node --env-file=.env.local scripts/import-excel.mjs <arquivo.xlsx> [--aba "2026 - b"] [--gravar]');
   process.exit(1);
 }
 
@@ -25,46 +29,49 @@ const norm = (s) =>
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+const chave = (s) => norm(s).replace(/[^a-z0-9]/g, ""); // "BPC Loas" == "BPC/LOAS"
+const texto = (v) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).trim());
 
-// field -> header keywords (first header containing any keyword wins)
+// field -> header keywords, compared letters/digits only (first header containing any keyword wins; order matters)
 const COLUNAS = {
-  numero: ["n contrato", "no contrato", "numero do contrato", "numero contrato", "contrato"],
+  numero: ["ncontrato", "nocontrato", "numerodocontrato", "numerocontrato"],
   cliente: ["cliente", "nome"],
   cpf: ["cpf"],
   telefone: ["telefone", "celular", "whatsapp"],
-  natureza: ["natureza", "pasta", "area"],
-  tipo: ["tipo", "beneficio", "previdencia"],
-  responsavel: ["responsavel", "advogado", "colaborador"],
+  natureza: ["natureza"],
+  tipo: ["tipo", "beneficio"],
   data_assinatura: ["assinatura"],
-  data_entrega_docs: ["entrega"],
-  data_distribuicao: ["distribu", "finaliza", "protocolo"],
-  status: ["status", "situacao", "cancelad"],
-  motivo: ["motivo"],
-  pendencia: ["pendencia", "falt"],
+  situacao: ["situacao", "status"],
+  pendencia: ["pendencia"],
   providencia: ["providencia"],
-  acao: ["acao", "acoes"],
+  data_entrega_docs: ["entrega"],
+  responsavel: ["responsavel", "advogado"],
+  data_distribuicao: ["finalizado", "distribuicaoem", "datadistribu"],
 };
 
 function mapearCabecalho(cabecalhos) {
   const usados = new Set();
   const mapa = {};
   for (const [campo, chaves] of Object.entries(COLUNAS)) {
-    const h = cabecalhos.find((c) => !usados.has(c) && chaves.some((k) => norm(c).includes(k)));
-    if (h) {
-      mapa[campo] = h;
-      usados.add(h);
+    const i = cabecalhos.findIndex((c, idx) => c && !usados.has(idx) && chaves.some((k) => chave(c).includes(k)));
+    if (i >= 0) {
+      mapa[campo] = i;
+      usados.add(i);
     }
   }
   return mapa;
 }
 
-// Excel serial number, Date, "dd/mm/aaaa" or "aaaa-mm-dd" -> "aaaa-mm-dd"
+// Date cell, Excel serial number, "dd/mm/aaaa" or "aaaa-mm-dd" -> "aaaa-mm-dd"
 function data(v) {
   if (v === null || v === undefined || v === "") return null;
-  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  if (v instanceof Date && !isNaN(v)) {
+    // SheetJS returns local-midnight dates; add 12h so the time zone never moves the day.
+    return new Date(v.getTime() + 12 * 3600e3 - v.getTimezoneOffset() * 60e3).toISOString().slice(0, 10);
+  }
   if (typeof v === "number") {
     const d = XLSX.SSF.parse_date_code(v);
-    return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : null;
+    return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : "INVALIDA";
   }
   const s = String(v).trim();
   let iso = null;
@@ -72,62 +79,137 @@ function data(v) {
   if (m) iso = `${m[3].length === 2 ? `20${m[3]}` : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) iso = `${m[1]}-${m[2]}-${m[3]}`;
-  // Reject impossible dates such as 31/02.
-  const d = iso ? new Date(`${iso}T12:00:00Z`) : null;
+  const d = iso ? new Date(`${iso}T12:00:00Z`) : null; // rejects 31/02 etc.
   return d && !isNaN(d) && d.toISOString().slice(0, 10) === iso ? iso : "INVALIDA";
 }
+const diasEntre = (a, b) => Math.round((new Date(`${b}T12:00:00Z`) - new Date(`${a}T12:00:00Z`)) / 86400e3);
 
-const chave = (s) => norm(s).replace(/[^a-z0-9]/g, ""); // "BPC Loas" == "BPC/LOAS"
+// Nature column: typos of "previdenciário" -> previdenciaria; civil, bancário, tributário, etc. -> civel.
+const natureza = (v) => (/^pr[ae]v|^prv/.test(norm(v)) ? "previdenciaria" : norm(v) ? "civel" : null);
 
+// Free-text type -> type registered in supabase (schema.sql, 002, 003). First rule that matches wins.
+const TIPOS = [
+  [/reclus/, "Auxílio-reclusão"],
+  [/acident/, "Auxílio-acidente"],
+  [/incapacidade|auxilio.?doenca|invalidez/, "Auxílio por incapacidade"],
+  [/beneficio assistencial|bpc|loas/, "BPC/LOAS"],
+  [/pensao/, "Pensão por morte"],
+  [/maternidade/, "Salário-maternidade"],
+  [/planejamento|panejamento/, "Planejamento previdenciário"],
+  [/aposentadoria/, "Aposentadoria"],
+  [/revisao|majoracao|pccs/, "Revisão"],
+  [/imposto de renda|\bir\b/, "Isenção de imposto de renda"],
+  [/acerto|vinculos|contribuic/, "Acerto de contribuições"],
+  [/banco|bancari|financeira|infinitepay|caixa economica|descontos indevidos/, "Ação contra banco / instituição financeira"],
+  [/indenizacao|dano moral|danos morais/, "Indenização / danos morais"],
+];
+function tipoCanonico(txt, nat) {
+  const n = norm(txt);
+  if (!n) return null;
+  const achado = TIPOS.find(([re]) => re.test(n))?.[1];
+  if (achado) {
+    // The nature follows the type (the sheet sometimes marks a bank case as "previdenciário").
+    const civel = achado.startsWith("Ação") || achado.startsWith("Indenização");
+    return { nome: achado, natureza: civel ? "civel" : "previdenciaria" };
+  }
+  return { nome: nat === "civel" ? "Outros (cível)" : "Outros (previdenciário)", natureza: nat ?? "previdenciaria" };
+}
+
+// Spelling variants of the same person ("Joao", "João", "joao") share the first 3 letters of the
+// first name; the most frequent spelling in the sheet is used (users are matched by first name).
+const chaveResp = (v) => chave(norm(v).split(" ")[0]).slice(0, 3);
+let grafias = new Map();
+const responsavelCanonico = (v) => (texto(v) ? grafias.get(chaveResp(v)) ?? texto(v) : null);
+
+const CANCELA = /cancel|desist|distrato/;
+const SEM_POTENCIAL = /inviav|potencial|qualidade de segurado|gerado errado|geradoerrado|nao gera direito|baixo retorno/;
+const SEM_PENDENCIA = /^(nao|n|nao\.|ok|-|0|false)$/;
+
+// ------------------------------------------------------------------ read the sheet
+const wb = XLSX.readFile(arquivo, { cellDates: true });
+const nomeAba = abaNome ?? wb.SheetNames[0];
+const aba = wb.Sheets[nomeAba];
+if (!aba) {
+  console.error(`Aba "${nomeAba}" não encontrada. Abas: ${wb.SheetNames.join(" | ")}`);
+  process.exit(1);
+}
+const matriz = XLSX.utils.sheet_to_json(aba, { header: 1, defval: null, raw: true });
+const iCab = matriz.findIndex((r) => r.some((c) => norm(c).includes("contrato")) && r.some((c) => norm(c).includes("cliente")));
+if (iCab < 0) {
+  console.error('Linha de cabeçalho não encontrada (precisa ter "contrato" e "cliente").');
+  process.exit(1);
+}
+const mapa = mapearCabecalho(matriz[iCab]);
+if (mapa.responsavel !== undefined) {
+  const freq = new Map();
+  for (const r of matriz.slice(iCab + 1)) {
+    const v = texto(r[mapa.responsavel]);
+    if (v) freq.set(v, (freq.get(v) ?? 0) + 1);
+  }
+  const melhor = new Map();
+  for (const [v, n] of freq) {
+    const k = chaveResp(v);
+    if (!melhor.has(k) || n > melhor.get(k)[1]) melhor.set(k, [v, n]);
+  }
+  grafias = new Map([...melhor].map(([k, [v]]) => [k, v]));
+}
+console.log(`Aba "${nomeAba}": cabeçalho na linha ${iCab + 1}, ${matriz.length - iCab - 1} linhas abaixo.`);
+console.log("Colunas reconhecidas:", Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, String(matriz[iCab][i]).trim()])));
+const faltando = ["numero", "cliente", "data_entrega_docs"].filter((c) => mapa[c] === undefined);
+if (faltando.length) console.warn("ATENÇÃO - colunas não encontradas:", faltando, "(ajuste COLUNAS no script)");
+
+// ------------------------------------------------------------------ database (optional in the dry run)
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) {
+if (GRAVAR && (!url || !key)) {
   console.error("Defina NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY em .env.local");
   process.exit(1);
 }
-const db = createClient(url, key, { auth: { persistSession: false } });
-
-const wb = XLSX.readFile(arquivo, { cellDates: true });
-const aba = wb.Sheets[wb.SheetNames[0]];
-const linhas = XLSX.utils.sheet_to_json(aba, { defval: null, raw: true });
-const mapa = mapearCabecalho(Object.keys(linhas[0] ?? {}));
-console.log(`Aba "${wb.SheetNames[0]}": ${linhas.length} linhas.`);
-console.log("Colunas reconhecidas:", mapa);
-const faltando = ["numero", "cliente", "data_entrega_docs"].filter((c) => !mapa[c]);
-if (faltando.length) console.warn("ATENÇÃO - colunas não encontradas:", faltando, "(ajuste COLUNAS no script)");
-
-const [{ data: tipos }, { data: perfis }, { data: existentes }] = await Promise.all([
-  db.from("tipos_processo").select("id, nome, natureza"),
-  db.from("perfis").select("id, nome"),
-  db.from("contratos").select("numero").not("numero", "is", null),
-]);
-const numerosExistentes = new Set((existentes ?? []).map((c) => String(c.numero)));
-
-const acharTipo = (v) => {
-  const n = chave(v);
-  if (!n) return null;
-  return (tipos ?? []).find((t) => chave(t.nome) === n || n.includes(chave(t.nome)) || chave(t.nome).includes(n))?.id ?? null;
-};
-const acharPerfil = (v) => {
-  const n = norm(v);
-  if (!n) return null;
-  return (
-    (perfis ?? []).find((p) => norm(p.nome) === n) ??
-    (perfis ?? []).find((p) => norm(p.nome).startsWith(n) || n.startsWith(norm(p.nome).split(" ")[0]))
-  )?.id ?? null;
+const db = url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
+let tipos = null;
+let perfis = null;
+const numerosExistentes = new Set();
+if (db) {
+  const [t, p] = await Promise.all([db.from("tipos_processo").select("id, nome, natureza"), db.from("perfis").select("id, nome")]);
+  if (t.error) {
+    console.error("Erro ao ler o banco:", t.error.message);
+    process.exit(1);
+  }
+  tipos = t.data;
+  perfis = p.data;
+  for (let de = 0; ; de += 1000) {
+    const { data: lote } = await db.from("contratos").select("numero").not("numero", "is", null).range(de, de + 999);
+    lote?.forEach((c) => numerosExistentes.add(String(c.numero)));
+    if (!lote || lote.length < 1000) break;
+  }
+} else {
+  console.log("(sem .env.local: simulação sem consultar o banco)");
+}
+const idTipo = (t) => tipos?.find((x) => x.natureza === t.natureza && chave(x.nome) === chave(t.nome))?.id ?? null;
+const idPerfil = (nome) => {
+  if (!perfis || !nome) return null;
+  const n = norm(nome);
+  const primeiro = n.split(" ")[0];
+  return (perfis.find((p) => norm(p.nome) === n) ?? perfis.find((p) => norm(p.nome).split(" ")[0] === primeiro))?.id ?? null;
 };
 
+// ------------------------------------------------------------------ validate rows
 const erros = [];
 const avisos = [];
 const validos = [];
 const vistos = new Set();
-linhas.forEach((l, i) => {
-  const linha = i + 2; // header is row 1
-  const get = (campo) => (mapa[campo] ? l[mapa[campo]] : null);
-  const numero = get("numero") === null ? null : String(get("numero")).trim();
-  const cliente = get("cliente") ? String(get("cliente")).trim() : null;
+const semUsuario = new Map();
+const tiposFaltando = new Set();
+const outros = [];
+const situacoesIgnoradas = new Map();
+
+matriz.slice(iCab + 1).forEach((r, i) => {
+  const linha = iCab + 2 + i;
+  const get = (campo) => (mapa[campo] === undefined ? null : r[mapa[campo]]);
+  const numero = texto(get("numero"));
+  const cliente = texto(get("cliente"));
   if (!numero && !cliente) return; // empty row
-  if (!cliente) return erros.push(`Linha ${linha}: sem nome do cliente.`);
+  if (!cliente) return avisos.push(`Linha ${linha}: "${numero}" sem nome do cliente - linha ignorada.`);
   if (numero && vistos.has(numero)) return erros.push(`Linha ${linha}: nº de contrato ${numero} repetido na planilha.`);
   if (numero && numerosExistentes.has(numero)) return avisos.push(`Linha ${linha}: contrato ${numero} já existe no sistema (ignorado).`);
   if (numero) vistos.add(numero);
@@ -139,55 +221,112 @@ linhas.forEach((l, i) => {
   };
   for (const [c, v] of Object.entries(datas)) {
     if (v === "INVALIDA") {
-      avisos.push(`Linha ${linha}: data inválida em "${mapa[c]}" (${get(c)}) - deixada em branco.`);
+      avisos.push(`Linha ${linha} (${numero}): data inválida em "${String(matriz[iCab][mapa[c]]).trim()}" (${get(c)}) - deixada em branco.`);
       datas[c] = null;
     }
   }
-
-  const statusTxt = norm(get("status"));
-  const cancelado = statusTxt.includes("cancel") || statusTxt.includes("desist");
-  const motivoTxt = norm(get("motivo")) || statusTxt;
-  const status = cancelado ? "cancelado" : datas.data_distribuicao ? "distribuido" : "em_andamento";
-  if (status === "distribuido" && !numero) {
-    avisos.push(`Linha ${linha}: distribuído sem nº de contrato - importado como "em andamento".`);
+  const hoje = new Date().toISOString().slice(0, 10);
+  for (const c of ["data_entrega_docs", "data_distribuicao"]) {
+    if (datas[c] && datas[c] > hoje) avisos.push(`Linha ${linha} (${numero}): ${c === "data_entrega_docs" ? "entrega" : "finalizado"} no futuro (${datas[c]}) - conferir.`);
+  }
+  if (datas.data_entrega_docs && datas.data_distribuicao && datas.data_distribuicao < datas.data_entrega_docs) {
+    avisos.push(`Linha ${linha} (${numero}): finalizado (${datas.data_distribuicao}) antes da entrega (${datas.data_entrega_docs}) - conferir.`);
   }
 
-  const naturezaTxt = norm(get("natureza"));
+  const situacao = texto(get("situacao"));
+  const pendencia = texto(get("pendencia"));
+  const providencia = texto(get("providencia"));
+  const cancelado = CANCELA.test(norm(situacao)) || CANCELA.test(norm(pendencia));
+  if (situacao && !cancelado) situacoesIgnoradas.set(situacao, (situacoesIgnoradas.get(situacao) ?? 0) + 1);
+
+  let status = cancelado ? "cancelado" : datas.data_distribuicao ? "distribuido" : "em_andamento";
+  if (status === "distribuido" && !numero) {
+    avisos.push(`Linha ${linha}: finalizado sem nº de contrato - importado como "em andamento".`);
+    status = "em_andamento";
+  }
+
+  const nat = natureza(get("natureza"));
+  const tipoTxt = texto(get("tipo"));
+  const tipo = tipoCanonico(tipoTxt, nat);
+  if (tipo?.nome.startsWith("Outros")) outros.push(tipoTxt);
+  const tipoId = tipo ? idTipo(tipo) : null;
+  if (tipo && tipos && !tipoId) tiposFaltando.add(tipo.nome);
+
+  const respNome = responsavelCanonico(get("responsavel"));
+  const respId = idPerfil(respNome);
+  if (respNome && !respId) semUsuario.set(respNome, (semUsuario.get(respNome) ?? 0) + 1);
+
   const cpf = String(get("cpf") ?? "").replace(/\D/g, "") || null;
   if (cpf && cpf.length !== 11) avisos.push(`Linha ${linha}: CPF "${get("cpf")}" inválido - ignorado.`);
-  const tipoId = acharTipo(get("tipo"));
-  if (get("tipo") && !tipoId) avisos.push(`Linha ${linha}: tipo "${get("tipo")}" não cadastrado - deixado em branco.`);
-  const respId = acharPerfil(get("responsavel"));
-  if (get("responsavel") && !respId) avisos.push(`Linha ${linha}: responsável "${get("responsavel")}" não é usuário do sistema - deixado em branco.`);
+
+  const temPendencia = !cancelado && pendencia && !SEM_PENDENCIA.test(norm(pendencia)) && !(pendencia instanceof Date);
+  const descricaoPendencia = temPendencia ? pendencia.replace(/^sim\s*[,.:-]?\s*/i, "").trim() || "Pendência (sem detalhe na planilha)" : null;
 
   validos.push({
     linha,
-    cliente: { nome: cliente, cpf: cpf && cpf.length === 11 ? cpf : null, telefone: get("telefone") ? String(get("telefone")) : null },
+    cliente: { nome: cliente, cpf: cpf && cpf.length === 11 ? cpf : null, telefone: texto(get("telefone")) },
+    responsavel: respNome,
     contrato: {
       numero,
-      natureza: naturezaTxt.startsWith("civ") ? "civel" : "previdenciaria",
+      natureza: tipo?.natureza ?? nat ?? "previdenciaria",
       tipo_id: tipoId,
+      tipo_nome: tipo?.nome ?? null, // only for the report; removed before insert
+      descricao: tipoTxt,
       responsavel_id: respId,
-      status: status === "distribuido" && !numero ? "em_andamento" : status,
-      motivo_cancelamento: cancelado ? (motivoTxt.includes("potencial") || motivoTxt.includes("analise") ? "sem_potencial" : "desistencia") : null,
+      status,
+      motivo_cancelamento: cancelado
+        ? SEM_POTENCIAL.test(norm([situacao, pendencia, providencia].join(" "))) ? "sem_potencial" : "desistencia"
+        : null,
+      obs_cancelamento: cancelado ? [situacao, pendencia, providencia].filter(Boolean).join(" | ") : null,
       ...datas,
-      data_distribuicao: status === "distribuido" && numero ? datas.data_distribuicao : null,
+      data_distribuicao: status === "distribuido" ? datas.data_distribuicao : null,
       origem: "importacao",
     },
-    pendencia: get("pendencia") && !["nao", "n", "-", "0", "false"].includes(norm(get("pendencia")))
-      ? { descricao: String(get("pendencia")), providencia: get("providencia") ? String(get("providencia")) : null, acao: get("acao") ? String(get("acao")) : null }
+    pendencia: temPendencia
+      ? {
+          descricao: descricaoPendencia,
+          providencia,
+          acao: situacao,
+          resolvida_em: status === "distribuido" ? datas.data_distribuicao : null,
+        }
       : null,
   });
 });
 
+// ------------------------------------------------------------------ report
+const conta = (f) => validos.reduce((m, v) => ((m[f(v)] = (m[f(v)] ?? 0) + 1), m), {});
 console.log(`\nVálidas: ${validos.length} · Erros: ${erros.length} · Avisos: ${avisos.length}`);
 [...erros, ...avisos].forEach((m) => console.log(" - " + m));
+console.log("\nPor status:", conta((v) => v.contrato.status));
+console.log("Cancelados por motivo:", conta((v) => v.contrato.motivo_cancelamento ?? "-"));
+console.log("Por natureza:", conta((v) => v.contrato.natureza));
+console.log("Por tipo:", conta((v) => v.contrato.tipo_nome ?? "(sem tipo)"));
+console.log(`Tipo "Outros" (${outros.length}) - texto original fica na descrição:`, outros);
+console.log("Por responsável:", conta((v) => v.responsavel ?? "(sem responsável)"));
+console.log("Pendências:", validos.filter((v) => v.pendencia).length, "(abertas:", validos.filter((v) => v.pendencia && !v.pendencia.resolvida_em).length + ")");
+if (situacoesIgnoradas.size) console.log('Textos de "situação" (não são cancelamento; vão para a ação da pendência quando houver):', Object.fromEntries(situacoesIgnoradas));
+if (semUsuario.size) console.log("ATENÇÃO - responsáveis sem usuário no sistema (contratos ficarão sem responsável):", Object.fromEntries(semUsuario));
+if (tiposFaltando.size) console.log("ATENÇÃO - tipos não cadastrados (rode supabase/003_tipos.sql):", [...tiposFaltando]);
+
+// Same KPI as the dashboard: distributed contracts with delivery date, deadline 10 calendar days.
+const medidos = validos.filter((v) => v.contrato.status === "distribuido" && v.contrato.data_entrega_docs);
+const tempos = medidos.map((v) => diasEntre(v.contrato.data_entrega_docs, v.contrato.data_distribuicao));
+if (tempos.length) {
+  const media = tempos.reduce((a, b) => a + b, 0) / tempos.length;
+  const noPrazo = tempos.filter((t) => t <= 10).length;
+  console.log(`\nIndicadores esperados no painel: tempo médio ${media.toFixed(1)} dias · ${((100 * noPrazo) / tempos.length).toFixed(1)}% no prazo (${noPrazo}/${tempos.length} distribuídos com data de entrega)`);
+}
 
 if (!GRAVAR) {
   console.log("\nSimulação concluída. Nada foi gravado. Rode de novo com --gravar para importar.");
   process.exit(0);
 }
+if (erros.length) {
+  console.error("\nCorrija os erros acima antes de gravar.");
+  process.exit(1);
+}
 
+// ------------------------------------------------------------------ write
 let ok = 0;
 for (const v of validos) {
   let clienteId = null;
@@ -203,12 +342,17 @@ for (const v of validos) {
     }
     clienteId = c.id;
   }
-  const { data: k, error } = await db.from("contratos").insert({ ...v.contrato, cliente_id: clienteId }).select("id").single();
+  const contrato = { ...v.contrato };
+  delete contrato.tipo_nome;
+  const { data: k, error } = await db.from("contratos").insert({ ...contrato, cliente_id: clienteId }).select("id").single();
   if (error) {
     console.log(` - Linha ${v.linha}: erro ao criar contrato: ${error.message}`);
     continue;
   }
-  if (v.pendencia) await db.from("pendencias").insert({ ...v.pendencia, contrato_id: k.id, criado_por: null });
+  if (v.pendencia) {
+    const { error: e } = await db.from("pendencias").insert({ ...v.pendencia, contrato_id: k.id, criado_por: null });
+    if (e) console.log(` - Linha ${v.linha}: contrato criado, mas erro na pendência: ${e.message}`);
+  }
   ok++;
 }
 console.log(`\nImportados: ${ok} de ${validos.length}.`);

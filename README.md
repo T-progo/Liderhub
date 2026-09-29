@@ -4,14 +4,16 @@ Web system that tracks the 10-day deadline between document delivery and case di
 with KPIs, Liderhub integration and WhatsApp deadline alerts. Requirements: `SPEC.md`.
 
 ```
-supabase/   schema.sql (run first), 002_liderhub.sql, seed_teste.sql (test data)
-web/        Next.js 16 app (login, contratos, painel, admin) + scripts/import-excel.mjs
+supabase/   schema.sql (run first), 002_liderhub.sql, 003_tipos.sql, seed_teste.sql (test data)
+web/        Next.js 16 app (login, contratos, painel, admin) + scripts/ (run-sql, import-excel)
 n8n/        build_alertas.py -> avisos-prazo.json (daily WhatsApp alerts workflow)
 ```
 
 ## 1. Supabase
 1. Create a project (region São Paulo). Settings → API: copy the URL, `anon` key and `service_role` key.
-2. SQL editor: run `supabase/schema.sql`, then `supabase/002_liderhub.sql`.
+2. SQL editor: run `supabase/schema.sql`, then `002_liderhub.sql`, then `003_tipos.sql`.
+   Or from `web/` with `DATABASE_URL` in `.env.local`:
+   `node --env-file=.env.local scripts/run-sql.mjs ../supabase/schema.sql ../supabase/002_liderhub.sql ../supabase/003_tipos.sql`
 3. Authentication → Users → "Add user" (your e-mail + password, auto-confirm). Then in SQL:
    `update perfis set papel = 'admin', nome = 'Seu nome' where id = (select id from auth.users where email = 'SEU@EMAIL');`
 4. Optional: run `supabase/seed_teste.sql` for test data (cleanup block at the end of the file).
@@ -19,13 +21,13 @@ n8n/        build_alertas.py -> avisos-prazo.json (daily WhatsApp alerts workflo
 ## 2. Web app (local)
 ```bash
 cd web
-cp .env.local.example .env.local   # fill the 3 values
+cp .env.local.example .env.local   # fill the values (DATABASE_URL only for scripts)
 npm install
 npm run dev                        # http://localhost:3000
 ```
 
 ## 3. Deploy (Vercel)
-Import the GitHub repo, **Root Directory = `web`**, add the 3 environment variables, deploy.
+Import the GitHub repo, **Root Directory = `web`**, add the 3 `SUPABASE` environment variables, deploy.
 In Supabase → Authentication → URL Configuration, set the Site URL to the Vercel URL.
 
 ## 4. n8n (client instance)
@@ -40,7 +42,9 @@ In Supabase → Authentication → URL Configuration, set the Site URL to the Ve
 Put the client's file in `data/` (git-ignored), then:
 ```bash
 cd web
-node --env-file=.env.local scripts/import-excel.mjs ../data/planilha.xlsx           # dry run report
-node --env-file=.env.local scripts/import-excel.mjs ../data/planilha.xlsx --gravar  # import
+node --env-file=.env.local scripts/import-excel.mjs ../data/planilha.xlsx --aba "2026 - b"           # dry run report
+node --env-file=.env.local scripts/import-excel.mjs ../data/planilha.xlsx --aba "2026 - b" --gravar  # import
 ```
-Create the users first so "Responsável" names can be matched.
+Create the users first so "Responsável" names can be matched (by first name; spelling variants are merged).
+The original "Tipo" text is kept in the contract's "Descrição"; cancelled/desistiu/distrato rows become
+cancelled contracts; "pendência" text other than "não" becomes a pendência (resolved on the finalizado date).
