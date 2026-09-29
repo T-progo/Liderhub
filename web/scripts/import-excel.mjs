@@ -233,7 +233,7 @@ matriz.slice(iCab + 1).forEach((r, i) => {
     if (datas[c] && datas[c] > hoje) avisos.push(`Linha ${linha} (${numero}): ${c === "data_entrega_docs" ? "entrega" : "finalizado"} no futuro (${datas[c]}) - conferir.`);
   }
   if (datas.data_entrega_docs && datas.data_distribuicao && datas.data_distribuicao < datas.data_entrega_docs) {
-    avisos.push(`Linha ${linha} (${numero}): finalizado (${datas.data_distribuicao}) antes da entrega (${datas.data_entrega_docs}) - conferir.`);
+    avisos.push(`Linha ${linha} (${numero}): finalizado (${datas.data_distribuicao}) antes da entrega (${datas.data_entrega_docs}) - entrega ajustada para a data de finalização (0 dia).`);
   }
 
   const situacao = texto(get("situacao"));

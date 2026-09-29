@@ -11,7 +11,7 @@ export function DistribuirForm({ id }: { id: string }) {
   return (
     <form action={action} className="space-y-2">
       <input type="hidden" name="id" value={id} />
-      <Field label="Data de finalização / distribuição">
+      <Field label="Data de finalização / distribuição" hint="Se for anterior à entrega dos documentos, a entrega passa a ser esta data (0 dia).">
         <Input type="date" name="data_distribuicao" defaultValue={hojeISO()} required />
       </Field>
       <ErrorBox message={state.erro} />

@@ -4,16 +4,16 @@ Web system that tracks the 10-day deadline between document delivery and case di
 with KPIs, Liderhub integration and WhatsApp deadline alerts. Requirements: `SPEC.md`.
 
 ```
-supabase/   schema.sql (run first), 002_liderhub.sql, 003_tipos.sql, seed_teste.sql (test data)
+supabase/   schema.sql (run first), 002_liderhub.sql, 003_tipos.sql, 004_ajuste_entrega.sql, seed_teste.sql (test data)
 web/        Next.js 16 app (login, contratos, painel, admin) + scripts/ (run-sql, import-excel)
 n8n/        build_alertas.py -> avisos-prazo.json (daily WhatsApp alerts workflow)
 ```
 
 ## 1. Supabase
 1. Create a project (region São Paulo). Settings → API: copy the URL, `anon` key and `service_role` key.
-2. SQL editor: run `supabase/schema.sql`, then `002_liderhub.sql`, then `003_tipos.sql`.
+2. SQL editor: run `supabase/schema.sql`, then `002_liderhub.sql`, `003_tipos.sql`, `004_ajuste_entrega.sql`.
    Or from `web/` with `DATABASE_URL` in `.env.local`:
-   `node --env-file=.env.local scripts/run-sql.mjs ../supabase/schema.sql ../supabase/002_liderhub.sql ../supabase/003_tipos.sql`
+   `node --env-file=.env.local scripts/run-sql.mjs ../supabase/schema.sql ../supabase/002_liderhub.sql ../supabase/003_tipos.sql ../supabase/004_ajuste_entrega.sql`
 3. Authentication → Users → "Add user" (your e-mail + password, auto-confirm). Then in SQL:
    `update perfis set papel = 'admin', nome = 'Seu nome' where id = (select id from auth.users where email = 'SEU@EMAIL');`
 4. Optional: run `supabase/seed_teste.sql` for test data (cleanup block at the end of the file).
