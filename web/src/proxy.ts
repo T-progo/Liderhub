@@ -24,9 +24,9 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Verifies the JWT locally (and refreshes an expired session); no Auth server round trip.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims.sub;
 
   const isLogin = request.nextUrl.pathname.startsWith("/login");
   if (!user && !isLogin) {
