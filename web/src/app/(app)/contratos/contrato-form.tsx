@@ -25,8 +25,8 @@ export function ContratoForm({ contrato, cliente, tipos, perfis }: Props) {
       {cliente ? (
         <input type="hidden" name="cliente_id" value={cliente.id} />
       ) : (
-        <fieldset className="grid gap-3 rounded-md border border-slate-200 p-3 md:grid-cols-3">
-          <legend className="px-1 text-sm font-medium text-slate-700">Cliente</legend>
+        <fieldset className="grid gap-3 rounded-xl border border-stone-200 p-4 md:grid-cols-3">
+          <legend className="px-1 text-sm font-medium text-stone-700">Cliente</legend>
           <Field label="Nome completo">
             <Input name="cliente_nome" required />
           </Field>
@@ -39,7 +39,7 @@ export function ContratoForm({ contrato, cliente, tipos, perfis }: Props) {
         </fieldset>
       )}
       {cliente && !contrato && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-stone-600">
           Cliente: <strong>{cliente.nome}</strong> {cliente.cpf && `(${fmtCpf(cliente.cpf)})`}
         </p>
       )}

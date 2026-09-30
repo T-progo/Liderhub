@@ -1,11 +1,41 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-dm-sans);
+  --font-serif: var(--font-fraunces);
 }
 
-body {
-  background: #f8fafc;
-  color: #0f172a;
+/* Warm palette: terracotta accent, cream background, espresso sidebar. */
+@theme {
+  --color-brand-50: #fbf5f1;
+  --color-brand-100: #f6e7dc;
+  --color-brand-200: #ebcdb8;
+  --color-brand-300: #dcab8c;
+  --color-brand-400: #cb845c;
+  --color-brand-500: #bb6a40;
+  --color-brand-600: #a55634;
+  --color-brand-700: #87432b;
+  --color-brand-800: #6e3827;
+  --color-brand-900: #5a2f22;
+  --color-cream: #faf6f0;
+  --color-espresso: #2a201b;
+  --color-espresso-700: #3a2d26;
+}
+
+@layer base {
+  body {
+    background: var(--color-cream);
+    color: var(--color-stone-800);
+  }
+  h1,
+  h2 {
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
+  }
+  h1 {
+    color: var(--color-stone-900);
+  }
+  ::selection {
+    background: var(--color-brand-200);
+  }
 }

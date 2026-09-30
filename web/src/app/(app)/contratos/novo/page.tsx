@@ -19,8 +19,8 @@ export default async function NovoContratoPage(props: PageProps<"/contratos/novo
   return (
     <div className="max-w-4xl space-y-4">
       <div>
-        <Link href="/contratos" className="text-sm text-blue-700 hover:underline">← Contratos</Link>
-        <h1 className="text-xl font-semibold">Novo contrato</h1>
+        <Link href="/contratos" className="text-sm text-brand-700 hover:underline">← Contratos</Link>
+        <h1 className="text-2xl font-semibold">Novo contrato</h1>
       </div>
       <Card>
         <ContratoForm tipos={tipos ?? []} perfis={perfis ?? []} cliente={cliente ?? undefined} />

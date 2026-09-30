@@ -55,7 +55,7 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Contratos</h1>
+        <h1 className="text-2xl font-semibold">Contratos</h1>
         <Link href="/contratos/novo">
           <Button>Novo contrato</Button>
         </Link>
@@ -63,8 +63,8 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {contadores.map((c) => (
-          <Link key={c.label} href={c.href} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:border-blue-300">
-            <p className="text-xs text-slate-500">{c.label}</p>
+          <Link key={c.label} href={c.href} className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_3px_rgba(68,40,24,0.06)] transition-colors hover:border-brand-300">
+            <p className="text-xs text-stone-500">{c.label}</p>
             <p className={`text-2xl font-semibold ${c.tone ?? ""}`}>{c.valor}</p>
           </Link>
         ))}
@@ -116,9 +116,9 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
 
       {error && <p className="text-sm text-red-700">Erro ao carregar: {error.message}</p>}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-stone-200/80 bg-white shadow-[0_1px_3px_rgba(68,40,24,0.06)]">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-600 uppercase">
+          <thead className="border-b border-stone-200 bg-stone-50/70 text-xs tracking-wide text-stone-500 uppercase">
             <tr>
               <th className="px-3 py-2">Nº contrato</th>
               <th className="px-3 py-2">Cliente</th>
@@ -129,29 +129,29 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
               <th className="px-3 py-2">Situação</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-stone-100">
             {contratos?.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">Nenhum contrato encontrado.</td>
+                <td colSpan={7} className="px-3 py-6 text-center text-stone-500">Nenhum contrato encontrado.</td>
               </tr>
             )}
             {contratos?.map((c) => (
-              <tr key={c.id} className="hover:bg-slate-50">
+              <tr key={c.id} className="transition-colors hover:bg-brand-50/40">
                 <td className="px-3 py-2">
-                  <Link href={`/contratos/${c.id}`} className="font-medium text-blue-700 hover:underline">
+                  <Link href={`/contratos/${c.id}`} className="font-medium text-brand-700 hover:underline">
                     {c.numero ?? <span className="text-amber-700">(sem nº)</span>}
                   </Link>
                 </td>
                 <td className="px-3 py-2">
                   <div>{c.cliente_nome}</div>
-                  {c.cliente_cpf && <div className="text-xs text-slate-500">{cpf(c.cliente_cpf)}</div>}
+                  {c.cliente_cpf && <div className="text-xs text-stone-500">{cpf(c.cliente_cpf)}</div>}
                 </td>
                 <td className="px-3 py-2">
                   <div>{NATUREZA[c.natureza]}</div>
-                  <div className="text-xs text-slate-500">{c.tipo_nome ?? "-"}</div>
-                  {c.descricao && <div className="max-w-xs truncate text-xs text-slate-400" title={c.descricao}>{c.descricao}</div>}
+                  <div className="text-xs text-stone-500">{c.tipo_nome ?? "-"}</div>
+                  {c.descricao && <div className="max-w-xs truncate text-xs text-stone-400" title={c.descricao}>{c.descricao}</div>}
                 </td>
-                <td className="px-3 py-2">{c.responsavel_nome ?? <span className="text-slate-400">-</span>}</td>
+                <td className="px-3 py-2">{c.responsavel_nome ?? <span className="text-stone-400">-</span>}</td>
                 <td className="px-3 py-2">{data(c.data_entrega_docs)}</td>
                 <td className="px-3 py-2">{data(c.data_prazo)}</td>
                 <td className="space-x-1 px-3 py-2">
@@ -164,7 +164,7 @@ export default async function ContratosPage(props: PageProps<"/contratos">) {
           </tbody>
         </table>
       </div>
-      {contratos && contratos.length >= 500 && <p className="text-xs text-slate-500">Mostrando os primeiros 500. Use os filtros.</p>}
+      {contratos && contratos.length >= 500 && <p className="text-xs text-stone-500">Mostrando os primeiros 500. Use os filtros.</p>}
     </div>
   );
 }

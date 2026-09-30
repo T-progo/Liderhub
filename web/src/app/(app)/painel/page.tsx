@@ -34,15 +34,15 @@ const pct = (g: Grupo) => (g.distribuidos ? (100 * g.noPrazo) / g.distribuidos :
 const media = (g: Grupo) => (g.distribuidos ? g.somaDias / g.distribuidos : null);
 
 function BarraMeta({ valor, meta }: { valor: number | null; meta: number }) {
-  if (valor === null) return <span className="text-slate-400">-</span>;
+  if (valor === null) return <span className="text-stone-400">-</span>;
   const ok = valor >= meta;
   return (
     <div className="flex items-center gap-2">
-      <div className="relative h-2 w-28 rounded bg-slate-100">
-        <div className={`h-2 rounded ${ok ? "bg-green-500" : "bg-red-500"}`} style={{ width: `${Math.min(valor, 100)}%` }} />
-        <div className="absolute top-[-3px] h-3.5 w-px bg-slate-700" style={{ left: `${meta}%` }} title={`Meta ${meta}%`} />
+      <div className="relative h-2 w-28 rounded bg-stone-100">
+        <div className={`h-2 rounded ${ok ? "bg-emerald-500" : "bg-red-500"}`} style={{ width: `${Math.min(valor, 100)}%` }} />
+        <div className="absolute top-[-3px] h-3.5 w-px bg-stone-700" style={{ left: `${meta}%` }} title={`Meta ${meta}%`} />
       </div>
-      <span className={ok ? "text-green-700" : "text-red-700"}>{num(valor)}%</span>
+      <span className={ok ? "text-emerald-700" : "text-red-700"}>{num(valor)}%</span>
     </div>
   );
 }
@@ -52,7 +52,7 @@ function Tabela({ titulo, grupos, meta }: { titulo: string; grupos: Grupo[]; met
     <Card title={titulo}>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs text-slate-500 uppercase">
+          <thead className="text-xs text-stone-500 uppercase">
             <tr>
               <th className="py-1 pr-3">Nome</th>
               <th className="py-1 pr-3">Distribuídos</th>
@@ -62,7 +62,7 @@ function Tabela({ titulo, grupos, meta }: { titulo: string; grupos: Grupo[]; met
               <th className="py-1">Atrasados</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-stone-100">
             {grupos.map((g) => (
               <tr key={g.nome}>
                 <td className="py-1.5 pr-3">{g.nome}</td>
@@ -74,7 +74,7 @@ function Tabela({ titulo, grupos, meta }: { titulo: string; grupos: Grupo[]; met
               </tr>
             ))}
             {grupos.length === 0 && (
-              <tr><td colSpan={6} className="py-3 text-slate-500">Sem dados.</td></tr>
+              <tr><td colSpan={6} className="py-3 text-stone-500">Sem dados.</td></tr>
             )}
           </tbody>
         </table>
@@ -119,7 +119,7 @@ export default async function PainelPage(props: PageProps<"/painel">) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-xl font-semibold">Painel de indicadores</h1>
+        <h1 className="text-2xl font-semibold">Painel de indicadores</h1>
         <form className="flex flex-wrap items-end gap-2">
           <Field label="Distribuídos de">
             <Input type="date" name="de" defaultValue={de} />
@@ -129,26 +129,26 @@ export default async function PainelPage(props: PageProps<"/painel">) {
           </Field>
           <Button type="submit" variant="secondary">Aplicar</Button>
           {(de || ate) && (
-            <Link href="/painel" className="pb-2 text-sm text-blue-700 hover:underline">limpar</Link>
+            <Link href="/painel" className="pb-2 text-sm text-brand-700 hover:underline">limpar</Link>
           )}
         </form>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div className={`rounded-lg border p-4 shadow-sm ${pctGeral === null ? "border-slate-200 bg-white" : atingiu ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"}`}>
-          <p className="text-xs text-slate-600">Distribuídos dentro do prazo</p>
+        <div className={`rounded-2xl border p-5 shadow-[0_1px_3px_rgba(68,40,24,0.06)] ${pctGeral === null ? "border-stone-200 bg-white" : atingiu ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+          <p className="text-xs text-stone-600">Distribuídos dentro do prazo</p>
           <p className="text-3xl font-semibold">{pctGeral === null ? "-" : `${num(pctGeral)}%`}</p>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-stone-600">
             Meta: {num(meta, 0)}% · {pctGeral === null ? "sem distribuições no período" : atingiu ? "meta atingida" : "abaixo da meta"}
           </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-600">Tempo médio de distribuição</p>
+        <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-[0_1px_3px_rgba(68,40,24,0.06)]">
+          <p className="text-xs text-stone-600">Tempo médio de distribuição</p>
           <p className="text-3xl font-semibold">{media(g) === null ? "-" : `${num(media(g))} dias`}</p>
-          <p className="text-xs text-slate-600">Prazo: {cfg?.prazo_dias ?? 10} dias corridos · {g.distribuidos} distribuídos</p>
+          <p className="text-xs text-stone-600">Prazo: {cfg?.prazo_dias ?? 10} dias corridos · {g.distribuidos} distribuídos</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-600">Em andamento hoje</p>
+        <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-[0_1px_3px_rgba(68,40,24,0.06)]">
+          <p className="text-xs text-stone-600">Em andamento hoje</p>
           <p className="text-3xl font-semibold">{g.abertos}</p>
           <p className="text-xs">
             <Link href="/contratos?situacao=atrasados" className="text-red-700 hover:underline">{g.atrasados} atrasados</Link>
@@ -166,7 +166,7 @@ export default async function PainelPage(props: PageProps<"/painel">) {
           meta={meta}
         />
       </div>
-      <p className="text-xs text-slate-500">Contratos cancelados não entram nos indicadores.</p>
+      <p className="text-xs text-stone-500">Contratos cancelados não entram nos indicadores.</p>
     </div>
   );
 }

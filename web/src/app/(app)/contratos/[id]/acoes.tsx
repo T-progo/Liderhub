@@ -59,7 +59,7 @@ export function ClienteForm({ cliente }: { cliente: Cliente }) {
         </Field>
       </div>
       <ErrorBox message={state.erro} />
-      {state.ok && <p className="text-sm text-green-700">{state.ok}</p>}
+      {state.ok && <p className="text-sm text-emerald-700">{state.ok}</p>}
       <Button type="submit" variant="secondary" disabled={pending}>Salvar cliente</Button>
     </form>
   );
